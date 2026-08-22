@@ -6,6 +6,9 @@
 > Senior Quantitative Developer & AI Agent Architect style  
 > Python + MetaTrader 5 + LINE Thai Notifier
 
+**Repository**: https://github.com/Gotji253/xauusd-multi-agent-trading  
+**Visibility**: Public
+
 ---
 
 ## เป้าหมายหลัก
@@ -68,6 +71,14 @@ pip install -r requirements.txt
 pip install -r requirements-dev.txt
 ```
 
+### สำหรับ Live / Paper Trading บน Windows หรือ Windows VPS
+```bash
+pip install MetaTrader5
+```
+> **หมายเหตุสำคัญ**: แพ็กเกจ `MetaTrader5` รองรับเฉพาะ **Windows** เท่านั้น  
+> ดังนั้นใน GitHub Actions (Ubuntu) และเครื่อง Mac/Linux จะไม่ติดตั้งแพ็กเกจนี้  
+> โค้ดถูกออกแบบให้ Mock ได้ทั้งหมดสำหรับ Unit Test และ CI
+
 คัดลอกไฟล์ environment:
 ```bash
 cp .env.example .env
@@ -93,7 +104,8 @@ pytest tests/ -v --cov=agents --cov=core
 - MyPy (Type check)
 - Pytest + Coverage
 
-ดูผลได้ที่แท็บ **Actions**
+ดูผลได้ที่แท็บ **Actions**  
+Workflow รองรับ `workflow_dispatch` (กด Run workflow ด้วยมือได้)
 
 ---
 
@@ -108,12 +120,12 @@ pytest tests/ -v --cov=agents --cov=core
 ## สถานะปัจจุบัน
 
 - [x] โครงสร้างโปรเจกต์
-- [x] GitHub Actions CI
+- [x] GitHub Actions CI (รองรับ Ubuntu)
 - [x] Mock MT5 สำหรับ Unit Test
-- [ ] Technical Analysis Agent (กำลังพัฒนา)
-- [ ] Risk Management Agent (กำลังพัฒนา)
-- [ ] Execution Agent
-- [ ] LINE Thai Notifier
+- [x] Risk Management Agent (logic พื้นฐานพร้อม + ผ่าน Unit Test)
+- [x] LINE Thai Notifier (ข้อความภาษาไทย + mock mode)
+- [ ] Technical Analysis Agent (logic เต็ม)
+- [ ] Execution Agent (เชื่อม MT5 จริง)
 - [ ] Backtesting Engine
 - [ ] Paper Trading / Live
 
