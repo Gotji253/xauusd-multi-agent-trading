@@ -29,7 +29,8 @@ def test_execution_mock_sell_units_sign():
     agent = ExecutionAgent(mode="mock", default_units_scale=1.0)
     r = agent.place_order("XAUUSD", "SELL", 2.0, 2600.0, 2500.0)
     assert r["success"] is True
-    assert r["units"] == -2.0
+    assert r["direction"] == "SELL"
+    assert r["quantity"] == 2.0
 
 
 def test_execution_auto_without_key_is_mock():
