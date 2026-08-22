@@ -11,6 +11,30 @@
 
 ---
 
+## รันบนเบราว์เซอร์ได้ทันที (ไม่มี PC ก็ได้)
+
+โปรเจกต์นี้รองรับ **GitHub Codespaces** แล้ว
+
+### วิธีเปิด (ใช้มือถือหรือคอมเครื่องไหนก็ได้)
+
+1. เข้า https://github.com/Gotji253/xauusd-multi-agent-trading
+2. กดปุ่มสีเขียว **<> Code**
+3. เลือกแท็บ **Codespaces**
+4. กด **Create codespace on main**
+5. รอ 1–3 นาที → ได้ VS Code บนคลาวด์พร้อมใช้งาน
+
+หลังเปิดแล้วรันคำสั่งนี้ใน Terminal ได้เลย:
+
+```bash
+pytest tests/ -v
+python main.py
+```
+
+> หมายเหตุ: Codespaces เป็น Linux → ใช้พัฒนา Logic / Backtest / Unit Test ได้เต็มที่  
+> การส่งออเดอร์จริงต้องใช้ Windows VPS + MetaTrader5
+
+---
+
 ## เป้าหมายหลัก
 
 1. **Technical Analysis Agent** — วิเคราะห์แนวโน้ม, EMA, RSI, ATR และ Price Action ของ XAUUSD
@@ -51,6 +75,7 @@ xauusd-multi-agent-trading/
 ├── config/                  # Settings + Risk rules
 ├── tests/                   # Unit tests (MT5 fully mocked)
 ├── utils/
+├── .devcontainer/           # GitHub Codespaces config
 ├── .github/workflows/       # CI/CD
 ├── main.py
 └── requirements.txt
@@ -58,7 +83,7 @@ xauusd-multi-agent-trading/
 
 ---
 
-## การติดตั้ง (Local Development)
+## การติดตั้ง (Local / VPS)
 
 ```bash
 git clone https://github.com/Gotji253/xauusd-multi-agent-trading.git
@@ -76,8 +101,7 @@ pip install -r requirements-dev.txt
 pip install MetaTrader5
 ```
 > **หมายเหตุสำคัญ**: แพ็กเกจ `MetaTrader5` รองรับเฉพาะ **Windows** เท่านั้น  
-> ดังนั้นใน GitHub Actions (Ubuntu) และเครื่อง Mac/Linux จะไม่ติดตั้งแพ็กเกจนี้  
-> โค้ดถูกออกแบบให้ Mock ได้ทั้งหมดสำหรับ Unit Test และ CI
+> ดังนั้นใน GitHub Actions / Codespaces (Linux) จะใช้ Mock แทน
 
 คัดลอกไฟล์ environment:
 ```bash
@@ -87,9 +111,7 @@ cp .env.example .env
 
 ---
 
-## การรัน Tests (สำคัญ)
-
-ระบบใช้ **Mock MetaTrader5** ทั้งหมด → รันบน Linux / GitHub Actions ได้โดยไม่ต้องมี MT5 Terminal
+## การรัน Tests
 
 ```bash
 pytest tests/ -v --cov=agents --cov=core
@@ -104,8 +126,7 @@ pytest tests/ -v --cov=agents --cov=core
 - MyPy (Type check)
 - Pytest + Coverage
 
-ดูผลได้ที่แท็บ **Actions**  
-Workflow รองรับ `workflow_dispatch` (กด Run workflow ด้วยมือได้)
+ดูผลได้ที่แท็บ **Actions**
 
 ---
 
@@ -121,6 +142,7 @@ Workflow รองรับ `workflow_dispatch` (กด Run workflow ด้ว�
 
 - [x] โครงสร้างโปรเจกต์
 - [x] GitHub Actions CI (รองรับ Ubuntu)
+- [x] GitHub Codespaces (รันบนเบราว์เซอร์ได้)
 - [x] Mock MT5 สำหรับ Unit Test
 - [x] Risk Management Agent (logic พื้นฐานพร้อม + ผ่าน Unit Test)
 - [x] LINE Thai Notifier (ข้อความภาษาไทย + mock mode)

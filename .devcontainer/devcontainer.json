@@ -1,0 +1,37 @@
+{
+  "name": "XAUUSD Multi-Agent Trading",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12-bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-python.black-formatter",
+        "charliermarsh.ruff",
+        "ms-toolsai.jupyter",
+        "redhat.vscode-yaml"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "python.linting.enabled": true,
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "charliermarsh.ruff",
+        "[python]": {
+          "editor.defaultFormatter": "charliermarsh.ruff"
+        }
+      }
+    }
+  },
+  "postCreateCommand": "pip install --upgrade pip && pip install -r requirements.txt && pip install -r requirements-dev.txt",
+  "remoteUser": "vscode",
+  "forwardPorts": [],
+  "portsAttributes": {},
+  "hostRequirements": {
+    "cpus": 2,
+    "memory": "4gb",
+    "storage": "20gb"
+  }
+}
