@@ -1,0 +1,30 @@
+[project]
+name = "xauusd-multi-agent-trading"
+version = "0.1.0"
+description = "Multi-Agent AI Trading System for XAUUSD with strong Risk Management"
+requires-python = ">=3.11"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "SIM"]
+ignore = ["E501"]
+
+[tool.ruff.isort]
+known-first-party = ["agents", "core", "config", "utils"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v --tb=short"
+
+[tool.coverage.run]
+source = ["agents", "core"]
+omit = ["tests/*", "*/__init__.py"]

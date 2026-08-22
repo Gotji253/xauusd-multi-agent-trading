@@ -1,0 +1,24 @@
+# Risk Management Configuration for XAUUSD
+# ปรับค่าเหล่านี้หลัง Backtest เท่านั้น
+
+risk_per_trade: 0.0075          # 0.75% ของ Equity ต่อไม้
+max_daily_drawdown: 0.035       # หยุดเทรดเมื่อ DD ถึง 3.5%
+max_open_positions: 1
+max_consecutive_losses: 3
+min_reward_risk_ratio: 1.8
+
+# ATR based stops
+atr_period: 14
+atr_sl_multiplier: 1.8
+atr_tp_multiplier: 3.2
+
+# Filters
+max_spread_points: 40           # ปฏิเสธถ้า spread สูงเกิน
+allowed_sessions:
+  - London
+  - NewYork
+  - London_NY_Overlap
+
+# Position sizing
+min_lot: 0.01
+max_lot: 5.0                    # จำกัดตามบัญชี
