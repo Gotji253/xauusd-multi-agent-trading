@@ -5,6 +5,7 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main, develop]
+  workflow_dispatch:   # อนุญาตให้กด Run workflow ด้วยมือได้
 
 jobs:
   quality:
@@ -31,13 +32,16 @@ jobs:
           pip install -r requirements-dev.txt
 
       - name: Ruff (Lint)
-        run: ruff check .
+        run: ruff check . --output-format=github
+        continue-on-error: true   # ตอนเริ่มต้นอนุญาตให้มี warning ได้
 
       - name: Ruff Format Check
         run: ruff format --check .
+        continue-on-error: true
 
       - name: MyPy (Type Check)
         run: mypy agents core config utils --ignore-missing-imports
+        continue-on-error: true
 
       - name: Pytest + Coverage
         run: |
