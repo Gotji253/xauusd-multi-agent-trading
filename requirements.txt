@@ -1,7 +1,15 @@
-MetaTrader5>=5.0.45
+# Core dependencies (works on Linux / macOS / Windows / GitHub Actions)
 pandas>=2.0.0
 numpy>=1.24.0
 pyyaml>=6.0
 python-dotenv>=1.0.0
 requests>=2.31.0
 loguru>=0.7.0
+
+# ============================================================
+# MetaTrader5 is Windows-only package
+# Install it ONLY on your Windows machine or Windows VPS:
+#   pip install MetaTrader5
+# Do NOT put it in this file so that GitHub Actions (Ubuntu)
+# and non-Windows development still work cleanly.
+# ============================================================
