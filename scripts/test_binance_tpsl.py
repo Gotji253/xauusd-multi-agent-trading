@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 
 load_dotenv(ROOT / ".env")
 
-from core.binance_client import BinanceClient
+from core.binance_orders import BinanceOrderExt as BinanceClient
 
 
 def _must_testnet(env: str) -> None:
