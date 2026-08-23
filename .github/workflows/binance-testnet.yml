@@ -1,8 +1,13 @@
-# Binance Spot Testnet — ทดสอบเชื่อมต่อ + MARKET + TP/SL (OCO)
+# Binance Spot Testnet ผ่าน GitHub Actions
 #
-# Secrets:
-#   BINANCE_API_KEY / BINANCE_API_SECRET  (testnet only)
+# Secrets (repo):
+#   BINANCE_API_KEY / BINANCE_API_SECRET  ← testnet only
 # Keys: https://testnet.binance.vision
+#
+# หมายเหตุ: GitHub-hosted runner มักโดน Binance บล็อก IP (HTTP 451)
+#   - unit tests จะผ่านเสมอ
+#   - connection step จะรายงาน GEO-BLOCK ชัดเจน (ไม่ทำให้ pipeline พัง)
+#   - ต้องการทดสอบเชื่อมต่อจริง → ใช้ self-hosted runner ในเครือข่ายที่เข้า Binance ได้
 
 name: Binance Testnet — Order + TP/SL
 
@@ -58,6 +63,10 @@ jobs:
           pip install -r requirements.txt
           pip install pytest
 
+      - name: Unit tests (ไม่ต้องมี network ไป Binance)
+        run: |
+          pytest tests/test_binance_execution.py tests/test_binance_tpsl_helpers.py -v
+
       - name: Check secrets present
         id: secrets
         env:
@@ -73,6 +82,7 @@ jobs:
           fi
 
       - name: Connection + dry-run / live-order on Testnet
+        id: binance_api
         if: steps.secrets.outputs.present == 'true'
         env:
           BINANCE_API_KEY: ${{ secrets.BINANCE_API_KEY }}
@@ -87,25 +97,57 @@ jobs:
 
           echo "MODE=$MODE CLEANUP=$CLEANUP QTY=$QTY"
           echo "Forcing BINANCE_ENVIRONMENT=testnet (never live in CI)"
+          echo "Using --allow-geo-block for GitHub-hosted runners"
 
+          set +e
           if [ "$MODE" = "live-order" ]; then
-            EXTRA="--live-order"
+            EXTRA="--live-order --allow-geo-block"
             if [ "$CLEANUP" = "true" ]; then
               EXTRA="$EXTRA --cleanup"
             fi
             python scripts/test_binance_tpsl.py $EXTRA --qty "$QTY"
           else
-            python scripts/test_binance_tpsl.py --dry-run --qty "$QTY"
+            python scripts/test_binance_tpsl.py --dry-run --allow-geo-block --qty "$QTY"
           fi
+          code=$?
+          set -e
 
-      - name: Unit tests (Binance helpers)
-        run: |
-          pytest tests/test_binance_execution.py tests/test_binance_tpsl_helpers.py -v
-
-      - name: Fail if secrets missing on manual run
-        if: steps.secrets.outputs.present != 'true'
-        run: |
-          echo "Missing BINANCE_API_KEY / BINANCE_API_SECRET in repo secrets"
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          if [ "$code" -eq 0 ]; then
+            echo "status=connected" >> "$GITHUB_OUTPUT"
+            echo "✅ Binance API reachable — connection OK"
+            exit 0
+          elif [ "$code" -eq 78 ]; then
+            echo "status=geo_blocked" >> "$GITHUB_OUTPUT"
+            echo "::warning::Binance geo-blocked this runner (HTTP 451). Secrets are valid; network is blocked."
+            echo "SKIP: geo-block on GitHub-hosted runner — pipeline continues"
+            exit 0
+          else
+            echo "status=failed" >> "$GITHUB_OUTPUT"
+            echo "❌ Binance test failed with exit $code"
             exit 1
           fi
+
+      - name: Summary
+        run: |
+          echo "## Binance Testnet Result" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Item | Status |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|------|--------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Unit tests | passed |" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.secrets.outputs.present }}" = "true" ]; then
+            echo "| Secrets | found |" >> "$GITHUB_STEP_SUMMARY"
+            echo "| API step | ${{ steps.binance_api.outputs.status }} (exit ${{ steps.binance_api.outputs.exit_code }}) |" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "| Secrets | missing |" >> "$GITHUB_STEP_SUMMARY"
+            echo "| API step | skipped |" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "GitHub-hosted runners often get HTTP 451 from Binance." >> "$GITHUB_STEP_SUMMARY"
+          echo "For a real connection test use a self-hosted runner in an allowed region." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail if secrets missing on manual run
+        if: steps.secrets.outputs.present != 'true' && github.event_name == 'workflow_dispatch'
+        run: |
+          echo "Missing BINANCE_API_KEY / BINANCE_API_SECRET in repo secrets"
+          exit 1
