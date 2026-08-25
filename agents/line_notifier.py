@@ -106,3 +106,18 @@ class LineNotifierAgent:
     def notify_system_alert(self, title: str, detail: str) -> bool:
         msg = f"⚠️ {title}\n{detail}"
         return self.send_message(msg)
+
+    def notify_early_alert(self, kind: str, detail: str, price: float = 0.0) -> bool:
+        """Watch-only: CAPITULATION_WATCH / EXHAUSTION_WATCH — never an entry."""
+        if kind == "CAPITULATION_WATCH":
+            emoji = "🔻"
+            title = "CAPITULATION_WATCH (ไม่เข้าไม้)"
+        elif kind == "EXHAUSTION_WATCH":
+            emoji = "🔺"
+            title = "EXHAUSTION_WATCH (ไม่เข้าไม้)"
+        else:
+            emoji = "👀"
+            title = kind or "EARLY_ALERT"
+        px = f"\nราคา: {price:.2f}" if price else ""
+        msg = f"{emoji} {title}\n{detail}{px}\n(Alert เท่านั้น — ระบบไม่เปิดออเดอร์จากสัญญาณนี้)"
+        return self.send_message(msg)
