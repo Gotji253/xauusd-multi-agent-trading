@@ -51,13 +51,25 @@ class BinanceOrderExt(BinanceClient):
         quantity: float,
         client_order_id: Optional[str] = None,
         test_only: bool = False,
+        allow_live: bool = False,
     ) -> dict[str, Any]:
+        import os
         symbol = self.to_binance_symbol(symbol)
         side = side.upper().strip()
         if side not in ("BUY", "SELL"):
             return {"success": False, "ticket": None, "message": "side ต้องเป็น BUY หรือ SELL"}
         if quantity <= 0:
             return {"success": False, "ticket": None, "message": "quantity ต้องมากกว่า 0"}
+
+        if self.environment == "live" and not test_only:
+            env_allow = os.getenv("ALLOW_LIVE_BINANCE", "").lower() in ("1", "true", "yes")
+            if not (allow_live or env_allow):
+                return {
+                    "success": False,
+                    "ticket": None,
+                    "message": "LIVE mode ถูกบล็อก — ตั้ง ALLOW_LIVE_BINANCE=true หรือ allow_live=True",
+                    "environment": self.environment,
+                }
 
         filters = self.get_symbol_filters(symbol)
         qty_str = _fmt_qty(quantity, filters["stepSize"])
@@ -113,6 +125,7 @@ class BinanceOrderExt(BinanceClient):
         stop_loss_price: float,
         stop_limit_price: Optional[float] = None,
     ) -> dict[str, Any]:
+        """After BUY: SELL OCO — limit TP above, stop-limit SL below."""
         symbol = self.to_binance_symbol(symbol)
         filters = self.get_symbol_filters(symbol)
         tick = filters["tickSize"]
@@ -141,7 +154,7 @@ class BinanceOrderExt(BinanceClient):
         }
         result = self._request("POST", "/api/v3/order/oco", params=params, signed=True)
         if not result["ok"]:
-            alt = self._place_oco_order_list(symbol, qty_str, tp, sl, sl_limit)
+            alt = self._place_oco_order_list(symbol, "SELL", qty_str, tp, sl, sl_limit)
             if alt.get("success"):
                 return alt
             return {
@@ -154,7 +167,69 @@ class BinanceOrderExt(BinanceClient):
         data = result["data"] or {}
         return {
             "success": True,
-            "message": "OCO TP/SL placed",
+            "message": "OCO TP/SL placed (SELL after BUY)",
+            "side": "SELL",
+            "order_list_id": data.get("orderListId"),
+            "orders": data.get("orders") or data.get("orderReports"),
+            "tp_price": tp,
+            "sl_price": sl,
+            "sl_limit_price": sl_limit,
+            "quantity": qty_str,
+            "raw": data,
+        }
+
+    def place_oco_buy_tp_sl(
+        self,
+        symbol: str,
+        quantity: float,
+        take_profit_price: float,
+        stop_loss_price: float,
+        stop_limit_price: Optional[float] = None,
+    ) -> dict[str, Any]:
+        """After SELL: BUY OCO — limit TP below, stop-limit SL above."""
+        symbol = self.to_binance_symbol(symbol)
+        filters = self.get_symbol_filters(symbol)
+        tick = filters["tickSize"]
+        step = filters["stepSize"]
+        qty_str = _fmt_qty(quantity, step)
+        tp = _fmt_price(take_profit_price, tick)
+        sl = _fmt_price(stop_loss_price, tick)
+        if stop_limit_price is None:
+            stop_limit_price = float(sl) * 1.001
+        sl_limit = _fmt_price(stop_limit_price, tick)
+
+        if float(tp) >= float(sl):
+            return {
+                "success": False,
+                "message": "take_profit ต้องต่ำกว่า stop_loss สำหรับ BUY OCO หลัง SELL",
+            }
+
+        params: dict[str, Any] = {
+            "symbol": symbol,
+            "side": "BUY",
+            "quantity": qty_str,
+            "price": tp,
+            "stopPrice": sl,
+            "stopLimitPrice": sl_limit,
+            "stopLimitTimeInForce": "GTC",
+        }
+        result = self._request("POST", "/api/v3/order/oco", params=params, signed=True)
+        if not result["ok"]:
+            alt = self._place_oco_order_list(symbol, "BUY", qty_str, tp, sl, sl_limit)
+            if alt.get("success"):
+                return alt
+            return {
+                "success": False,
+                "message": result["error"],
+                "raw": result["data"],
+                "fallback": alt,
+            }
+
+        data = result["data"] or {}
+        return {
+            "success": True,
+            "message": "OCO TP/SL placed (BUY after SELL)",
+            "side": "BUY",
             "order_list_id": data.get("orderListId"),
             "orders": data.get("orders") or data.get("orderReports"),
             "tp_price": tp,
@@ -167,31 +242,49 @@ class BinanceOrderExt(BinanceClient):
     def _place_oco_order_list(
         self,
         symbol: str,
+        side: str,
         quantity: str,
         take_profit_price: str,
         stop_loss_price: str,
         stop_limit_price: str,
     ) -> dict[str, Any]:
-        params: dict[str, Any] = {
-            "symbol": symbol,
-            "side": "SELL",
-            "quantity": quantity,
-            "aboveType": "TAKE_PROFIT_LIMIT",
-            "abovePrice": take_profit_price,
-            "aboveStopPrice": take_profit_price,
-            "aboveTimeInForce": "GTC",
-            "belowType": "STOP_LOSS_LIMIT",
-            "belowPrice": stop_limit_price,
-            "belowStopPrice": stop_loss_price,
-            "belowTimeInForce": "GTC",
-        }
+        side = side.upper().strip()
+        if side == "SELL":
+            params: dict[str, Any] = {
+                "symbol": symbol,
+                "side": "SELL",
+                "quantity": quantity,
+                "aboveType": "TAKE_PROFIT_LIMIT",
+                "abovePrice": take_profit_price,
+                "aboveStopPrice": take_profit_price,
+                "aboveTimeInForce": "GTC",
+                "belowType": "STOP_LOSS_LIMIT",
+                "belowPrice": stop_limit_price,
+                "belowStopPrice": stop_loss_price,
+                "belowTimeInForce": "GTC",
+            }
+        else:
+            params = {
+                "symbol": symbol,
+                "side": "BUY",
+                "quantity": quantity,
+                "aboveType": "STOP_LOSS_LIMIT",
+                "abovePrice": stop_limit_price,
+                "aboveStopPrice": stop_loss_price,
+                "aboveTimeInForce": "GTC",
+                "belowType": "TAKE_PROFIT_LIMIT",
+                "belowPrice": take_profit_price,
+                "belowStopPrice": take_profit_price,
+                "belowTimeInForce": "GTC",
+            }
         result = self._request("POST", "/api/v3/orderList/oco", params=params, signed=True)
         if not result["ok"]:
             return {"success": False, "message": result["error"], "raw": result["data"]}
         data = result["data"] or {}
         return {
             "success": True,
-            "message": "OCO TP/SL placed (orderList)",
+            "message": f"OCO TP/SL placed (orderList {side})",
+            "side": side,
             "order_list_id": data.get("orderListId"),
             "orders": data.get("orders") or data.get("orderReports"),
             "tp_price": take_profit_price,
