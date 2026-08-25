@@ -21,7 +21,6 @@ class LineNotifierAgent:
     def send_message(self, message: str) -> bool:
         """ส่งข้อความดิบ"""
         if not self.token or not self.user_id:
-            # ในโหมด development / test จะไม่ส่งจริง
             print(f"[LINE MOCK] {message}")
             return True
 
@@ -72,16 +71,50 @@ class LineNotifierAgent:
         r_multiple: float,
         duration: str,
         equity: float,
+        *,
+        exit_reason: str = "",
+        entry_price: float = 0.0,
+        exit_price: float = 0.0,
+        lot_size: float = 0.0,
+        stop_loss: float = 0.0,
+        take_profit: float = 0.0,
+        usdt_free: float = 0.0,
+        btc_free: float = 0.0,
     ) -> bool:
-        emoji = "💰" if pnl >= 0 else "💸"
+        """แจ้งปิดไม้ — รองรับ SL/TP + ยอดเงินคงเหลือ"""
+        reason = (exit_reason or "").upper()
+        if reason in ("TP", "TAKE_PROFIT"):
+            emoji = "🎯"
+            tag = "TP"
+        elif reason in ("SL", "STOP_LOSS"):
+            emoji = "🛑"
+            tag = "SL"
+        else:
+            emoji = "💰" if pnl >= 0 else "💸"
+            tag = reason or "CLOSE"
         sign = "+" if pnl >= 0 else ""
-        msg = (
-            f"{emoji} ปิด {direction.upper()} {symbol}\n"
-            f"PnL: {sign}${pnl:.2f} ({sign}{r_multiple:.2f}R)\n"
-            f"ระยะเวลา: {duration}\n"
-            f"Equity ปัจจุบัน: ${equity:,.2f}"
-        )
-        return self.send_message(msg)
+        lines = [
+            f"{emoji} ปิด {direction.upper()} {symbol} ({tag})",
+        ]
+        if entry_price > 0:
+            lines.append(f"ราคาเข้า: {entry_price:.2f}")
+        if exit_price > 0:
+            lines.append(f"ราคาออก: {exit_price:.2f}")
+        if lot_size > 0:
+            lines.append(f"Lot: {lot_size}")
+        lines.append(f"PnL: {sign}${pnl:.2f} ({sign}{r_multiple:.2f}R)")
+        if stop_loss > 0 or take_profit > 0:
+            lines.append(f"SL: {stop_loss:.2f} | TP: {take_profit:.2f}")
+        if duration:
+            lines.append(f"ระยะเวลา: {duration}")
+        if usdt_free > 0 or equity > 0:
+            bal = usdt_free if usdt_free > 0 else equity
+            lines.append(f"ยอดคงเหลือ USDT: ${bal:,.2f}")
+        if btc_free > 0:
+            lines.append(f"BTC free: {btc_free:.6f}")
+        elif equity > 0 and usdt_free <= 0:
+            lines.append(f"Equity: ${equity:,.2f}")
+        return self.send_message("\n".join(lines))
 
     def notify_daily_summary(
         self,
