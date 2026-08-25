@@ -104,10 +104,33 @@ class BinanceClient:
         return self._request("GET", "/api/v3/time")
 
     def get_ticker_price(self, symbol: str = "BTCUSDT") -> dict[str, Any]:
-        return self._request("GET", "/api/v3/ticker/price", params={"symbol": symbol.upper()})
+        return self._request(
+            "GET", "/api/v3/ticker/price", params={"symbol": self.to_binance_symbol(symbol)}
+        )
 
     def get_exchange_info(self, symbol: str = "BTCUSDT") -> dict[str, Any]:
-        return self._request("GET", "/api/v3/exchangeInfo", params={"symbol": symbol.upper()})
+        return self._request(
+            "GET", "/api/v3/exchangeInfo", params={"symbol": self.to_binance_symbol(symbol)}
+        )
+
+    def get_klines(
+        self,
+        symbol: str = "BTCUSDT",
+        interval: str = "15m",
+        limit: int = 1000,
+        start_time: Optional[int] = None,
+        end_time: Optional[int] = None,
+    ) -> dict[str, Any]:
+        params: dict[str, Any] = {
+            "symbol": self.to_binance_symbol(symbol),
+            "interval": interval,
+            "limit": min(int(limit), 1000),
+        }
+        if start_time is not None:
+            params["startTime"] = int(start_time)
+        if end_time is not None:
+            params["endTime"] = int(end_time)
+        return self._request("GET", "/api/v3/klines", params=params, signed=False)
 
     def get_account(self) -> dict[str, Any]:
         return self._request("GET", "/api/v3/account", signed=True)
@@ -137,11 +160,12 @@ class BinanceClient:
         data = acc["data"] or {}
         balances = data.get("balances") or []
         interesting = {}
+        watch = ("BTC", "USDT", "USDC", "BNB", "FDUSD", "ETH")
         for b in balances:
             free = float(b.get("free") or 0)
             locked = float(b.get("locked") or 0)
             if free > 0 or locked > 0:
-                if b.get("asset") in ("BTC", "USDT", "USDC", "BNB", "FDUSD"):
+                if b.get("asset") in watch:
                     interesting[b["asset"]] = {"free": free, "locked": locked}
         ticker = self.get_ticker_price("BTCUSDT")
         price = None
@@ -149,18 +173,19 @@ class BinanceClient:
             price = (ticker.get("data") or {}).get("price")
         return {
             "success": True,
-            "message": "เชื่อมต่อ Binance สำเร็จ",
+            "message": "เชื่อมต่อ Binance สำเร็จ (BTCUSDT)",
             "environment": self.environment,
             "can_trade": data.get("canTrade"),
             "account_type": data.get("accountType"),
             "balances": interesting,
             "btcusdt_price": price,
+            "last_price": price,
         }
 
     @staticmethod
     def to_binance_symbol(symbol: str) -> str:
         s = symbol.upper().replace("/", "").replace("-", "").replace("_", "")
-        if s in ("BTC", "BTCUSD"):
+        if s in ("BTC", "BTCUSD", "BTCUSDT"):
             return "BTCUSDT"
         return s
 
@@ -170,7 +195,11 @@ class BinanceClient:
         side: str,
         quantity: float,
         client_order_id: Optional[str] = None,
+        test_only: bool = False,
+        allow_live: bool = False,
     ) -> dict[str, Any]:
+        import os
+
         symbol = self.to_binance_symbol(symbol)
         side = side.upper().strip()
         if side not in ("BUY", "SELL"):
@@ -178,7 +207,17 @@ class BinanceClient:
         if quantity <= 0:
             return {"success": False, "ticket": None, "message": "quantity ต้องมากกว่า 0"}
 
-        qty_str = f"{quantity:.5f}".rstrip("0").rstrip(".")
+        if self.environment == "live" and not test_only:
+            env_allow = os.getenv("ALLOW_LIVE_BINANCE", "").lower() in ("1", "true", "yes")
+            if not (allow_live or env_allow):
+                return {
+                    "success": False,
+                    "ticket": None,
+                    "message": "LIVE mode ถูกบล็อก — ตั้ง ALLOW_LIVE_BINANCE=true",
+                    "environment": self.environment,
+                }
+
+        qty_str = f"{quantity:.8f}".rstrip("0").rstrip(".")
         params: dict[str, Any] = {
             "symbol": symbol,
             "side": side,
@@ -188,15 +227,28 @@ class BinanceClient:
         if client_order_id:
             params["newClientOrderId"] = client_order_id[:36]
 
-        result = self._request("POST", "/api/v3/order", params=params, signed=True)
+        path = "/api/v3/order/test" if test_only else "/api/v3/order"
+        result = self._request("POST", path, params=params, signed=True)
         if not result["ok"]:
             return {
                 "success": False,
                 "ticket": None,
                 "message": result["error"],
                 "raw": result["data"],
+                "test_only": test_only,
             }
         data = result["data"] or {}
+        if test_only:
+            return {
+                "success": True,
+                "ticket": None,
+                "message": "order test OK (ไม่ได้ส่งจริง)",
+                "symbol": symbol,
+                "side": side,
+                "quantity": qty_str,
+                "test_only": True,
+                "raw": data,
+            }
         return {
             "success": True,
             "ticket": str(data.get("orderId")),
@@ -207,6 +259,7 @@ class BinanceClient:
             "status": data.get("status"),
             "fills": data.get("fills"),
             "raw": data,
+            "environment": self.environment,
         }
 
     def get_open_orders(self, symbol: str = "BTCUSDT") -> dict[str, Any]:
@@ -216,3 +269,31 @@ class BinanceClient:
             params={"symbol": self.to_binance_symbol(symbol)},
             signed=True,
         )
+
+    def get_my_trades(
+        self,
+        symbol: str = "BTCUSDT",
+        limit: int = 20,
+        start_time: int | None = None,
+    ) -> dict[str, Any]:
+        """Recent account trades for symbol (signed)."""
+        params: dict[str, Any] = {
+            "symbol": self.to_binance_symbol(symbol),
+            "limit": max(1, min(int(limit), 1000)),
+        }
+        if start_time is not None:
+            params["startTime"] = int(start_time)
+        return self._request("GET", "/api/v3/myTrades", params=params, signed=True)
+
+    def get_balances_map(self) -> dict[str, dict[str, float]]:
+        """Return {asset: {free, locked}} for non-zero balances."""
+        acc = self.get_account()
+        out: dict[str, dict[str, float]] = {}
+        if not acc.get("ok"):
+            return out
+        for b in (acc.get("data") or {}).get("balances") or []:
+            free = float(b.get("free") or 0)
+            locked = float(b.get("locked") or 0)
+            if free > 0 or locked > 0:
+                out[str(b.get("asset", "")).upper()] = {"free": free, "locked": locked}
+        return out
