@@ -1,1 +1,128 @@
-"""Structured trade / order cycle logging (stdout + optional file).\n\nWorks without loguru so scripts and agents can log in minimal environments.\n"""\n\nfrom __future__ import annotations\n\nimport json\nimport os\nfrom datetime import datetime, timezone\nfrom pathlib import Path\nfrom typing import Any, Optional\n\n\ndef _ts() -> str:\n    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")\n\n\nclass TradeLogger:\n    """Append-only JSONL + human-readable lines."""\n\n    def __init__(\n        self,\n        name: str = "trade",\n        log_dir: str | Path = "logs",\n        also_print: bool = True,\n    ):\n        self.name = name\n        self.also_print = also_print\n        self.log_dir = Path(log_dir)\n        self.log_dir.mkdir(parents=True, exist_ok=True)\n        day = datetime.now(timezone.utc).strftime("%Y-%m-%d")\n        self.jsonl_path = self.log_dir / f"{name}_{day}.jsonl"\n        self.text_path = self.log_dir / f"{name}_{day}.log"\n\n    def _write(self, level: str, event: str, data: Optional[dict[str, Any]] = None) -> None:\n        payload = {\n            "ts": _ts(),\n            "level": level,\n            "event": event,\n            "data": data or {},\n        }\n        line_json = json.dumps(payload, ensure_ascii=False, default=str)\n        data_s = ""\n        if data:\n            parts = [f"{k}={v}" for k, v in data.items()]\n            data_s = " | " + " ".join(parts)\n        line_text = f"{payload['ts']} | {level:<5} | {event}{data_s}"\n\n        with open(self.jsonl_path, "a", encoding="utf-8") as f:\n            f.write(line_json + "\n")\n        with open(self.text_path, "a", encoding="utf-8") as f:\n            f.write(line_text + "\n")\n\n        if self.also_print:\n            print(f"[LOG {level}] {event}{data_s}")\n\n    def info(self, event: str, **data: Any) -> None:\n        self._write("INFO", event, data)\n\n    def warn(self, event: str, **data: Any) -> None:\n        self._write("WARN", event, data)\n\n    def error(self, event: str, **data: Any) -> None:\n        self._write("ERROR", event, data)\n\n    def log_event(self, event: str, data: Optional[dict[str, Any]] = None, **kwargs: Any) -> None:\n        payload: dict[str, Any] = {}\n        if isinstance(data, dict):\n            payload.update(data)\n        if kwargs:\n            payload.update(kwargs)\n        self._write("INFO", event, payload)\n\n    def section(self, title: str) -> None:\n        self.info("section", title=title)\n\n    def log_order_result(self, result: dict[str, Any], context: str = "order") -> None:\n        oco = result.get("oco") or {}\n        self.info(\n            f"{context}.summary",\n            success=result.get("success"),\n            ticket=result.get("ticket"),\n            direction=result.get("direction"),\n            quantity=result.get("quantity"),\n            mode=result.get("mode"),\n            oco_failed=result.get("oco_failed"),\n            oco_success=oco.get("success"),\n            oco_list_id=result.get("oco_order_list_id") or oco.get("order_list_id"),\n            message=result.get("message"),\n        )\n        if oco:\n            self.info(\n                f"{context}.oco_detail",\n                success=oco.get("success"),\n                side=oco.get("side"),\n                tp=oco.get("tp_price"),\n                sl=oco.get("sl_price"),\n                sl_limit=oco.get("sl_limit_price"),\n                qty=oco.get("quantity"),\n                message=oco.get("message"),\n                raw_keys=list((oco.get("raw") or {}).keys()) if isinstance(oco.get("raw"), dict) else None,\n            )\n        if result.get("oco_failed"):\n            self.error(\n                f"{context}.oco_failed",\n                ticket=result.get("ticket"),\n                message=result.get("message"),\n                oco_message=oco.get("message"),\n            )\n        if result.get("success") is False:\n            self.error(\n                f"{context}.market_failed",\n                message=result.get("message"),\n                raw=str(result.get("raw") or "")[:300],\n            )\n\n\n_default: Optional[TradeLogger] = None\n\n\ndef get_trade_logger(name: str = "trade") -> TradeLogger:\n    global _default\n    if _default is None:\n        _default = TradeLogger(name=name)\n    return _default\n
+"""Structured trade / order cycle logging (stdout + optional file).
+
+Works without loguru so scripts and agents can log in minimal environments.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Optional
+
+
+def _ts() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+
+
+class TradeLogger:
+    """Append-only JSONL + human-readable lines."""
+
+    def __init__(
+        self,
+        name: str = "trade",
+        log_dir: str | Path = "logs",
+        also_print: bool = True,
+    ):
+        self.name = name
+        self.also_print = also_print
+        self.log_dir = Path(log_dir)
+        self.log_dir.mkdir(parents=True, exist_ok=True)
+        day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        self.jsonl_path = self.log_dir / f"{name}_{day}.jsonl"
+        self.text_path = self.log_dir / f"{name}_{day}.log"
+
+    def _write(self, level: str, event: str, data: Optional[dict[str, Any]] = None) -> None:
+        payload = {
+            "ts": _ts(),
+            "level": level,
+            "event": event,
+            "data": data or {},
+        }
+        line_json = json.dumps(payload, ensure_ascii=False, default=str)
+        data_s = ""
+        if data:
+            parts = [f"{k}={v}" for k, v in data.items()]
+            data_s = " | " + " ".join(parts)
+        line_text = f"{payload['ts']} | {level:<5} | {event}{data_s}"
+
+        with open(self.jsonl_path, "a", encoding="utf-8") as f:
+            f.write(line_json + "\n")
+        with open(self.text_path, "a", encoding="utf-8") as f:
+            f.write(line_text + "\n")
+
+        if self.also_print:
+            print(f"[LOG {level}] {event}{data_s}")
+
+    def info(self, event: str, **data: Any) -> None:
+        self._write("INFO", event, data)
+
+    def warn(self, event: str, **data: Any) -> None:
+        self._write("WARN", event, data)
+
+    def error(self, event: str, **data: Any) -> None:
+        self._write("ERROR", event, data)
+
+    def log_event(self, event: str, data: Optional[dict[str, Any]] = None, **kwargs: Any) -> None:
+        """Paper/orchestrator helper: log_event(\"SIGNAL_NONE\", record_dict)."""
+        payload: dict[str, Any] = {}
+        if isinstance(data, dict):
+            payload.update(data)
+        if kwargs:
+            payload.update(kwargs)
+        self._write("INFO", event, payload)
+
+    def section(self, title: str) -> None:
+        self.info("section", title=title)
+
+    def log_order_result(self, result: dict[str, Any], context: str = "order") -> None:
+        """Detailed dump of ExecutionAgent / OCO result."""
+        oco = result.get("oco") or {}
+        self.info(
+            f"{context}.summary",
+            success=result.get("success"),
+            ticket=result.get("ticket"),
+            direction=result.get("direction"),
+            quantity=result.get("quantity"),
+            mode=result.get("mode"),
+            oco_failed=result.get("oco_failed"),
+            oco_success=oco.get("success"),
+            oco_list_id=result.get("oco_order_list_id") or oco.get("order_list_id"),
+            message=result.get("message"),
+        )
+        if oco:
+            self.info(
+                f"{context}.oco_detail",
+                success=oco.get("success"),
+                side=oco.get("side"),
+                tp=oco.get("tp_price"),
+                sl=oco.get("sl_price"),
+                sl_limit=oco.get("sl_limit_price"),
+                qty=oco.get("quantity"),
+                message=oco.get("message"),
+                raw_keys=list((oco.get("raw") or {}).keys()) if isinstance(oco.get("raw"), dict) else None,
+            )
+        if result.get("oco_failed"):
+            self.error(
+                f"{context}.oco_failed",
+                ticket=result.get("ticket"),
+                message=result.get("message"),
+                oco_message=oco.get("message"),
+            )
+        if result.get("success") is False:
+            self.error(
+                f"{context}.market_failed",
+                message=result.get("message"),
+                raw=str(result.get("raw") or "")[:300],
+            )
+
+
+_default: Optional[TradeLogger] = None
+
+
+def get_trade_logger(name: str = "trade") -> TradeLogger:
+    global _default
+    if _default is None:
+        _default = TradeLogger(name=name)
+    return _default

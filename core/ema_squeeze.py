@@ -26,11 +26,14 @@ def h4_squeeze_breakout(
         "squeeze_now": False,
         "squeeze_recent": False,
         "breakout_buy": False,
+        "breakout_sell": False,
         "ribbon_width_pct": 0.0,
         "vol_ratio": 0.0,
         "adx_up": False,
         "above": False,
+        "below": False,
         "aligned": False,
+        "aligned_down": False,
     }
     if df_h4 is None or len(df_h4) < max(ema_slow + 5, lookback + 5):
         return empty
@@ -49,7 +52,9 @@ def h4_squeeze_breakout(
     last_e100 = float(e100.iloc[-1])
     last_e200 = float(e200.iloc[-1])
     above = last_c > last_e50 and last_c > last_e100 and last_c > last_e200
+    below = last_c < last_e50 and last_c < last_e100 and last_c < last_e200
     aligned = last_e50 > last_e100 > last_e200
+    aligned_down = last_e50 < last_e100 < last_e200
     squeeze_now = bool(squeeze.iloc[-1])
     squeeze_recent = bool(squeeze.iloc[-lookback:].any())
 
@@ -66,6 +71,7 @@ def h4_squeeze_breakout(
         adx_up = float(adx_s.iloc[-1]) > float(adx_s.iloc[-3])
 
     prior_high = float(df_h4["high"].iloc[-lookback:-1].max()) if lookback > 1 else last_c
+    prior_low = float(df_h4["low"].iloc[-lookback:-1].min()) if lookback > 1 else last_c
     breakout_buy = (
         squeeze_recent
         and not squeeze_now
@@ -73,14 +79,24 @@ def h4_squeeze_breakout(
         and last_c >= prior_high
         and (vol_ratio >= vol_mult or adx_up)
     )
+    breakout_sell = (
+        squeeze_recent
+        and not squeeze_now
+        and below
+        and last_c <= prior_low
+        and (vol_ratio >= vol_mult or adx_up)
+    )
 
     return {
         "squeeze_now": squeeze_now,
         "squeeze_recent": squeeze_recent,
         "breakout_buy": bool(breakout_buy),
+        "breakout_sell": bool(breakout_sell),
         "ribbon_width_pct": float(width.iloc[-1]) * 100.0,
         "vol_ratio": float(vol_ratio),
         "adx_up": bool(adx_up),
         "above": bool(above),
+        "below": bool(below),
         "aligned": bool(aligned),
+        "aligned_down": bool(aligned_down),
     }
