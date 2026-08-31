@@ -1,4 +1,4 @@
-"""Technical Analysis Agent — BTCUSDT W1+H4 stack + squeeze_or_pullback primary BUY."""
+"""Technical Analysis Agent — BTCUSDT W1+H4 stack + squeeze_or_pullback both sides."""
 
 from __future__ import annotations
 
@@ -70,7 +70,7 @@ class TechnicalAnalysisAgent:
         h4_bias_tolerance: float = 0.0020,
         w1_bias_tolerance: float = 0.0030,
         require_h4: bool = True,
-        require_w1: bool = True,
+        require_w1: bool = False,
         w1_mode: str = "no_oppose",
         adx_period: int = 14,
         min_adx: float = 20.0,
@@ -187,9 +187,15 @@ class TechnicalAnalysisAgent:
         if squeeze.get("breakout_buy") and self.squeeze_breakout_bonus > 0:
             buy_score += self.squeeze_breakout_bonus
             buy_reasons.append("H4 squeeze-BO")
+        if squeeze.get("breakout_sell") and self.squeeze_breakout_bonus > 0:
+            sell_score += self.squeeze_breakout_bonus
+            sell_reasons.append("H4 squeeze-BD")
         if squeeze.get("breakout_buy") and h4_bias != "BEARISH" and buy_score < self.min_confluence:
             buy_score = self.min_confluence
             buy_reasons.append("squeeze-BO trigger")
+        if squeeze.get("breakout_sell") and h4_bias != "BULLISH" and sell_score < self.min_confluence:
+            sell_score = self.min_confluence
+            sell_reasons.append("squeeze-BD trigger")
         if self.ema_stack_triggers_buy and stack.get("above") and h4_bias != "BEARISH" and buy_score < self.min_confluence:
             buy_score = self.min_confluence
 
@@ -209,6 +215,9 @@ class TechnicalAnalysisAgent:
                           float(last["ema_fast"]), float(last["ema_slow"]), "", w1_bias)
 
         if sell_score >= self.min_confluence and sell_score > buy_score and primary_bias == "BEARISH":
+            ok, why = self._primary_sell_ok(last, current_atr, squeeze)
+            if not ok:
+                return self._none_signal(f"SETUP {why}", gate="SETUP", w1_bias=w1_bias)
             if self.require_w1 and not self._w1_allows("SELL", w1_bias):
                 return self._none_signal(f"W1 block SELL {w1_bias}", gate="W1_BLOCK", w1_bias=w1_bias)
             if self.require_momentum and slope_atr > self.momentum_against_atr:
@@ -240,8 +249,23 @@ class TechnicalAnalysisAgent:
             return True, "h1_pullback"
         return False, "need squeeze-BO or H1 pullback"
 
+    def _primary_sell_ok(self, last, atr_val: float, squeeze: dict) -> tuple[bool, str]:
+        mode = self.primary_buy_mode
+        if mode in ("", "off", "any"):
+            return True, "any"
+        close = float(last["close"])
+        ema20 = float(last["ema_fast"])
+        rsi_val = float(last["rsi"])
+        pullback = abs(close - ema20) < float(atr_val) * self.pullback_atr_mult and close < ema20
+        if squeeze.get("breakout_sell"):
+            return True, "squeeze_breakdown"
+        if pullback and rsi_val >= 42:
+            return True, "h1_pullback"
+        return False, "need squeeze-BD or H1 pullback"
+
     def _h4_ema_stack(self, df_h4) -> dict:
-        out = {"above": False, "aligned": False, "ema50": 0.0, "ema100": 0.0, "ema200": 0.0}
+        out = {"above": False, "below": False, "aligned": False, "aligned_down": False,
+               "ema50": 0.0, "ema100": 0.0, "ema200": 0.0}
         if df_h4 is None or len(df_h4) < max(60, self.ema_trend):
             return out
         close = float(df_h4["close"].iloc[-1])
@@ -252,7 +276,9 @@ class TechnicalAnalysisAgent:
             return out
         out.update(ema50=e50, ema100=e100, ema200=e200)
         out["above"] = close > e50 and close > e100 and close > e200
+        out["below"] = close < e50 and close < e100 and close < e200
         out["aligned"] = e50 > e100 > e200
+        out["aligned_down"] = e50 < e100 < e200
         return out
 
     def _close_slope_atr(self, h1: pd.DataFrame, bars: int = 1) -> float:
@@ -348,8 +374,12 @@ class TechnicalAnalysisAgent:
         rsi_val = float(last["rsi"])
         prev_rsi = float(prev["rsi"]) if not pd.isna(prev["rsi"]) else rsi_val
         stack = stack or {}
-        if stack.get("above") and self.require_ema_stack_buy:
-            score = max(0.0, score - self.ema_stack_bonus)
+        if stack.get("below"):
+            score += self.ema_stack_bonus
+            reasons.append("H4 px<EMA stack")
+        if stack.get("aligned_down"):
+            score += 0.08
+            reasons.append("ribbon 50<100<200")
         if h4_bias == "BEARISH":
             score += 0.30
             reasons.append("H4 Bearish")
